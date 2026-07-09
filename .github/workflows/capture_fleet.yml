@@ -176,15 +176,10 @@ jobs:
               for line in f:
                   line = line.strip()
                   if not line or line.startswith("#"): continue
-                  # masscan -oG: "Host: 1.2.3.4 () Ports: 23/open/tcp//..."
-                  # Also try without () and with optional timestamp
-                  if not line.startswith("Host:"): continue
-                  # Extract IP: find first sequence matching x.x.x.x
+                  # masscan -oG may prepend "Timestamp:" before "Host:"
+                  # Extract IP: find first x.x.x.x
                   ipm = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
-                  if not ipm:
-                      sys.stderr.write(f"  NO IP in: {line[:100]}\n")
-                      sys.stderr.flush()
-                      continue
+                  if not ipm: continue
                   ip = ipm.group(1)
                   host_count += 1
                   # Find all open ports on this line
