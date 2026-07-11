@@ -20,6 +20,8 @@ on:
         description: 'Payload HTTP Port'
         required: true
         default: '1337'
+  schedule:
+    - cron: '27 */6 * * *'
 
 jobs:
   hunt:
